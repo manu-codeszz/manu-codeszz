@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>manu.codes — interactive</title>
+<meta name="description" content="Manshaya Pradhan — Full Stack Developer. Interactive developer console." />
+
+<!-- Optional webfont. Fallback stack below means the page looks correct even if this is blocked. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --midnight:#050816;
+    --deep-navy:#07152F;
+    --navy:#0A1633;
+    --crimson:#E63946;
+    --deep-red:#8B0000;
+    --bright-red:#FF4D5A;
+    --electric-blue:#38BDF8;
+    --cyan:#67E8F9;
+    --text:#D6E4FF;
+    --muted:#8BA3C7;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0; padding:0;
+    width:100%; height:100%;
+    background: var(--midnight);
+    overflow: hidden;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+
+  #scene{
+    position: fixed;
+    inset: 0;
+    display:block;
+    width:100%; height:100%;
+    z-index: 0;
+  }
+
+  /* faint scanline overlay — cheap CSS effect, no JS cost */
+  .scanlines{
+    position: fixed;
+    inset:0;
+    z-index: 1;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.015) 0px,
+      rgba(255,255,255,0.015) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    mix-blend-mode: overlay;
+  }
+
+  /* subtle vignette to keep focus centered, purely CSS */
+  .vignette{
+    position: fixed;
+    inset:0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(2,4,12,0.55) 100%);
+  }
+
+  .hud-layer{
+    position: fixed;
+    inset:0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .back-link{
+    position:absolute;
+    top: 18px; left: 18px;
+    pointer-events: auto;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    border: 1px solid rgba(139,163,199,0.35);
+    padding: 6px 10px;
+    border-radius: 3px;
+    background: rgba(7,21,47,0.55);
+    transition: color .2s, border-color .2s;
+  }
+  .back-link:hover{ color: var(--crimson); border-color: var(--crimson); }
+
+  /* small system labels scattered around the frame */
+  .sys-tag{
+    position:absolute;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    opacity: 0.75;
+    animation: pulse-fade 4.5s ease-in-out infinite;
+  }
+  .sys-tag b{ color: var(--electric-blue); font-weight: 500; }
+  .sys-tag.red b{ color: var(--crimson); }
+  @keyframes pulse-fade{
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.85; }
+  }
+
+  /* corner telemetry HUD, values patched via JS */
+  .corner-hud{
+    position:absolute;
+    bottom: 18px; right: 18px;
+    text-align: right;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--muted);
+    opacity: 0.85;
+  }
+  .corner-hud span{ color: var(--cyan); }
+
+  /* central developer console */
+  .console{
+    position:absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -46%);
+    width: min(560px, 88vw);
+    padding: 22px 26px;
+    background: rgba(7, 21, 47, 0.55);
+    border: 1px solid rgba(103, 232, 249, 0.18);
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(230,57,70,0.08), 0 0 60px rgba(56,189,248,0.06);
+    pointer-events: none;
+  }
+
+  .console .prompt{
+    color: var(--electric-blue);
+    font-size: 13px;
+    margin-bottom: 10px;
+    opacity: 0.9;
+  }
+
+  .console .typed-line{
+    font-size: 15px;
+    color: var(--text);
+    min-height: 22px;
+    white-space: pre;
+  }
+  .console .cursor-blink{
+    display:inline-block;
+    width: 8px; height: 15px;
+    background: var(--crimson);
+    margin-left: 2px;
+    vertical-align: -2px;
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+
+  .console .divider{
+    height:1px;
+    background: linear-gradient(to right, rgba(230,57,70,0.5), rgba(56,189,248,0.5), transparent);
+    margin: 16px 0;
+  }
+
+  .console .id-row{ font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
+  .console .id-role{ font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  .console .status-block{ margin-top: 16px; font-size: 12px; }
+  .console .status-row{ display:flex; justify-content: space-between; margin-top: 6px; color: var(--muted); }
+  .console .dot{ color: var(--crimson); margin-right: 6px; }
+  .console .dot.blue{ color: var(--electric-blue); }
+  .console .status-val{ color: var(--text); }
+
+  @media (max-width: 640px){
+    .console{ padding: 16px 18px; top: 46%; }
+    .console .id-row{ font-size: 17px; }
+    .sys-tag{ display:none; } /* keep mobile focused + readable */
+    .corner-hud{ font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene" aria-hidden="true"></canvas>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<div class="hud-layer">
+  <a class="back-link" href="https://github.com/manu-codeszz">← manu-codeszz</a>
+
+  <div class="sys-tag red" style="top:14%; left:6%; animation-delay:0s;">SYSTEM // 01</div>
+  <div class="sys-tag"     style="top:22%; right:6%; animation-delay:.8s;">NETWORK // <b>ACTIVE</b></div>
+  <div class="sys-tag red" style="bottom:30%; left:8%; animation-delay:1.6s;">CORE // <b>ONLINE</b></div>
+  <div class="sys-tag"     style="bottom:16%; right:10%; animation-delay:2.4s;">AI ENGINE // <b>RUNNING</b></div>
+  <div class="sys-tag red" style="top:8%; left:42%; animation-delay:3.2s;">SIGNAL // STABLE</div>
+
+  <div class="corner-hud">
+    X: <span id="hud-x">000</span><br/>
+    Y: <span id="hud-y">000</span><br/>
+    SIGNAL: <span id="hud-signal">98%</span>
+  </div>
+
+  <div class="console">
+    <div class="prompt">manu@dev-console:~$ <span id="typed-cmd"></span></div>
+    <div class="typed-line" id="typed-line"><span class="cursor-blink"></span></div>
+
+    <div class="divider"></div>
+
+    <div class="id-row">Manshaya Pradhan</div>
+    <div class="id-role">Full Stack Developer &nbsp;·&nbsp; Java &middot; Python &middot; AI/ML</div>
+
+    <div class="status-block">
+      <div class="status-row"><span><span class="dot">●</span>CORE SYSTEMS</span><span class="status-val">ONLINE</span></div>
+      <div class="status-row"><span><span class="dot blue">●</span>PROJECT PIPELINE</span><span class="status-val">ACTIVE</span></div>
+      <div class="status-row"><span><span class="dot">●</span>LEARNING ENGINE</span><span class="status-val">RUNNING</span></div>
+      <div class="status-row"><span><span class="dot blue">●</span>DEBUG MODE</span><span class="status-val">ENABLED</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =========================================================
+     1. CONFIGURATION
+     ========================================================= */
+  const COLORS = {
+    midnight:   "#050816",
+    deepNavy:   "#07152F",
+    navy:       "#0A1633",
+    crimson:    "#E63946",
+    deepRed:    "#8B0000",
+    brightRed:  "#FF4D5A",
+    electricBlue:"#38BDF8",
+    cyan:       "#67E8F9",
+    text:       "#D6E4FF",
+    muted:      "#8BA3C7"
+  };
+
+  const isMobile = window.matchMedia("(max-width: 720px)").matches ||
+                   /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  const CONFIG = {
+    dprCap: isMobile ? 1.5 : 2,
+    fireParticleCount: isMobile ? 26 : 90,
+    waterParticleCount: isMobile ? 18 : 60,
+    networkNodeCount:   isMobile ? 10 : 30,
+    mouseInfluenceRadius: 260,
+    mouseLerp: 0.08,          // smoothing factor: target -> lerped mouse
+    parallaxStrength: isMobile ? 0 : 10
+  };
+
+  /* =========================================================
+     2. CANVAS SETUP
+     ========================================================= */
+  const canvas = document.getElementById("scene");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  let W = 0, H = 0, DPR = 1;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, CONFIG.dprCap);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildRegions();
+    buildStars();
+    buildNetwork();  // rebuild layout on resize
+    buildFire();
+    buildWater();
+  }
+
+  // Regions the fire / water / network systems live in, recomputed on resize.
+  let fireRegion = {}, waterRegion = {}, networkRegion = {};
+  function buildRegions(){
+    fireRegion    = { x: 0,        y: H * 0.55, w: W * 0.42, h: H * 0.45 };
+    waterRegion   = { x: W * 0.55, y: H * 0.55, w: W * 0.45, h: H * 0.45 };
+    networkRegion = { x: W * 0.30, y: H * 0.04, w: W * 0.68, h: H * 0.62 };
+  }
+
+  /* =========================================================
+     3. MOUSE TRACKING (smoothed / lerped, never snaps)
+     ========================================================= */
+  const mouse = { x: -9999, y: -9999 };
+  const mouseTarget = { x: -9999, y: -9999 };
+  let mouseActive = false;
+
+  window.addEventListener("mousemove", (e) => {
+    mouseTarget.x = e.clientX;
+    mouseTarget.y = e.clientY;
+    mouseActive = true;
+  }, { passive: true });
+
+  window.addEventListener("touchmove", (e) => {
+    if (e.touches && e.touches[0]){
+      mouseTarget.x = e.touches[0].clientX;
+      mouseTarget.y = e.touches[0].clientY;
+      mouseActive = true;
+    }
+  }, { passive: true });
+
+  window.addEventListener("mouseleave", () => { mouseActive = false; });
+
+  function updateMouse(){
+    if (mouse.x === -9999){ mouse.x = mouseTarget.x; mouse.y = mouseTarget.y; }
+    mouse.x += (mouseTarget.x - mouse.x) * CONFIG.mouseLerp;
+    mouse.y += (mouseTarget.y - mouse.y) * CONFIG.mouseLerp;
+  }
+
+  function dist2(ax, ay, bx, by){
+    const dx = ax - bx, dy = ay - by;
+    return dx*dx + dy*dy;
+  }
+
+  /* =========================================================
+     4. PRE-RENDERED GLOW SPRITES (cheap soft particles)
+     Drawing a radial gradient per-particle every frame is
+     expensive. Instead we render each glow once to an
+     offscreen canvas and reuse it via drawImage + globalAlpha.
+     ========================================================= */
+  function makeGlowSprite(innerColor, outerColor, size){
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    grad.addColorStop(0, innerColor);
+    grad.addColorStop(0.5, outerColor);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    return c;
+  }
+
+  const fireSprite   = makeGlowSprite("rgba(255,210,140,0.95)", "rgba(230,57,70,0.55)", 64);
+  const emberSprite  = makeGlowSprite("rgba(255,240,200,1)",    "rgba(255,77,90,0.5)",  24);
+  const waterSprite  = makeGlowSprite("rgba(200,240,255,0.9)",  "rgba(56,189,248,0.45)",64);
+  const nodeSprite    = makeGlowSprite("rgba(255,255,255,0.95)","rgba(103,232,249,0.5)",40);
+  const nodeSpriteRed = makeGlowSprite("rgba(255,220,220,0.95)","rgba(230,57,70,0.5)",  40);
+
+  /* =========================================================
+     5. BACKGROUND — grid + starfield + parallax
+     ========================================================= */
+  let stars = [];
+  function buildStars(){
+    const count = isMobile ? 40 : 90;
+    stars = new Array(count).fill(0).map(() => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.2 + 0.3,
+      tw: Math.random() * Math.PI * 2, // twinkle phase
+      speed: Math.random() * 0.02 + 0.005
+    }));
+  }
+
+  function drawBackground(time){
+    // base fill
+    ctx.fillStyle = COLORS.midnight;
+    ctx.fillRect(0, 0, W, H);
+
+    // parallax offset — subtle, based on lerped mouse vs. screen center
+    const px = mouseActive ? ((mouse.x - W/2) / (W/2)) * CONFIG.parallaxStrength : 0;
+    const py = mouseActive ? ((mouse.y - H/2) / (H/2)) * CONFIG.parallaxStrength : 0;
+
+    // faint grid
+    ctx.save();
+    ctx.translate(px * 0.4, py * 0.4);
+    ctx.strokeStyle = "rgba(56,189,248,0.05)";
+    ctx.lineWidth = 1;
+    const gap = 64;
+    for (let x = -gap; x < W + gap; x += gap){
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = -gap; y < H + gap; y += gap){
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // stars
+    ctx.save();
+    ctx.translate(px, py);
+    for (const s of stars){
+      const tw = 0.4 + 0.6 * Math.abs(Math.sin(s.tw + time * s.speed));
+      ctx.globalAlpha = tw * 0.8;
+      ctx.fillStyle = COLORS.text;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* =========================================================
+     6. FIRE SYSTEM (procedural, particle based)
+     Rises from a baseline in the lower-left. Bends and
+     intensifies near the cursor.
+     ========================================================= */
+  let fireParticles = [];
+  function makeFireParticle(){
+    const baseX = fireRegion.x + Math.random() * fireRegion.w;
+    const baseY = fireRegion.y + fireRegion.h - Math.random() * 10;
+    return {
+      x: baseX, y: baseY,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: -(Math.random() * 1.2 + 0.6),
+      life: 0,
+      maxLife: Math.random() * 70 + 70,
+      size: Math.random() * 26 + 14,
+      seed: Math.random() * 1000,
+      ember: Math.random() < 0.18
+    };
+  }
+  function buildFire(){
+    fireParticles = new Array(CONFIG.fireParticleCount).fill(0).map(makeFireParticle);
+  }
+
+  function updateAndDrawFire(time){
+    const cx = fireRegion.x + fireRegion.w * 0.5;
+    const cy = fireRegion.y + fireRegion.h * 0.35;
+    const cursorNear = mouseActive && dist2(mouse.x, mouse.y, cx, cy) < (CONFIG.mouseInfluenceRadius * 1.6) ** 2;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (let i = 0; i < fireParticles.length; i++){
+      const p = fireParticles[i];
+      p.life++;
+
+      // organic turbulence via layered sine noise
+      const turbulence = Math.sin(time * 0.004 + p.seed) * 0.6 +
+                          Math.sin(time * 0.011 + p.seed * 1.7) * 0.3;
+      p.x += p.vx + turbulence;
+      p.y += p.vy;
+      p.vy -= 0.004; // gentle acceleration upward, like real heat plumes
+
+      // bend + intensify near cursor
+      if (cursorNear){
+        const dx = mouse.x - p.x, dy = mouse.y - p.y;
+        const d2 = dx*dx + dy*dy;
+        const influence = CONFIG.mouseInfluenceRadius ** 2;
+        if (d2 < influence){
+          const strength = (1 - d2 / influence) * 0.35;
+          p.x += dx * strength * 0.02;
+          p.vy -= strength * 0.05; // extra lift = intensity near cursor
+        }
+      }
+
+      const t = p.life / p.maxLife;
+      if (t >= 1 || p.y < fireRegion.y - 40){
+        fireParticles[i] = makeFireParticle();
+        continue;
+      }
+
+      const alpha = Math.sin(Math.PI * t) * (p.ember ? 0.9 : 0.75);
+      const size = p.size * (1 - t * 0.5);
+      const sprite = p.ember ? emberSprite : fireSprite;
+
+      ctx.globalAlpha = Math.max(alpha, 0);
+      ctx.drawImage(sprite, p.x - size/2, p.y - size/2, size, size);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* =========================================================
+     7. WATER SYSTEM (procedural waves + droplet particles)
+     Waves ripple outward when the cursor passes over them.
+     ========================================================= */
+  let waterParticles = [];
+  function makeWaterParticle(){
+    return {
+      x: waterRegion.x + Math.random() * waterRegion.w,
+      y: waterRegion.y + Math.random() * waterRegion.h * 0.7,
+      r: Math.random() * 14 + 6,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.02 + 0.01
+    };
+  }
+  function buildWater(){
+    waterParticles = new Array(CONFIG.waterParticleCount).fill(0).map(makeWaterParticle);
+  }
+
+  function waveHeight(x, time, amplitude, freq, phaseShift){
+    return Math.sin(x * freq + time * 0.001 + phaseShift) * amplitude;
+  }
+
+  function updateAndDrawWater(time){
+    const inWater = mouseActive &&
+      mouse.x > waterRegion.x - 60 && mouse.x < waterRegion.x + waterRegion.w + 60 &&
+      mouse.y > waterRegion.y - 60 && mouse.y < waterRegion.y + waterRegion.h + 60;
+
+    ctx.save();
+
+    // layered wave bands, deep navy to electric blue
+    const bands = [
+      { baseline: waterRegion.y + waterRegion.h * 0.18, amp: 10, freq: 0.02, color: "rgba(10,22,51,0.85)" },
+      { baseline: waterRegion.y + waterRegion.h * 0.42, amp: 14, freq: 0.016, color: "rgba(7,21,47,0.85)" },
+      { baseline: waterRegion.y + waterRegion.h * 0.68, amp: 18, freq: 0.012, color: "rgba(5,8,22,0.9)" }
+    ];
+
+    bands.forEach((band, bi) => {
+      ctx.beginPath();
+      ctx.moveTo(waterRegion.x, H);
+      for (let x = waterRegion.x; x <= waterRegion.x + waterRegion.w; x += 8){
+        let y = band.baseline + waveHeight(x, time, band.amp, band.freq, bi * 1.3);
+
+        // ripple bump near the cursor — a localized bulge that fades with distance
+        if (inWater){
+          const dx = x - mouse.x;
+          const rippleRadius = 140;
+          if (Math.abs(dx) < rippleRadius){
+            const falloff = 1 - Math.abs(dx) / rippleRadius;
+            y -= Math.sin(falloff * Math.PI) * 16 * falloff;
+          }
+        }
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(waterRegion.x + waterRegion.w, H);
+      ctx.closePath();
+      ctx.fillStyle = band.color;
+      ctx.fill();
+
+      // cyan highlight along the crest of the topmost band
+      if (bi === 0){
+        ctx.strokeStyle = "rgba(103,232,249,0.35)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+
+    // floating droplet / highlight particles
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of waterParticles){
+      p.phase += p.speed;
+      let py = p.y + Math.sin(p.phase) * 6;
+      let px = p.x;
+
+      if (inWater){
+        const dx = px - mouse.x, dy = py - mouse.y;
+        const d2 = dx*dx + dy*dy;
+        const influence = CONFIG.mouseInfluenceRadius ** 2;
+        if (d2 < influence && d2 > 1){
+          const d = Math.sqrt(d2);
+          const push = (1 - d / CONFIG.mouseInfluenceRadius) * 3.5;
+          px += (dx / d) * push;
+          py += (dy / d) * push;
+        }
+      }
+
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(p.phase * 1.5);
+      ctx.drawImage(waterSprite, px - p.r, py - p.r, p.r * 2, p.r * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* =========================================================
+     8. NETWORK SYSTEM (procedural neural-network / circuit)
+     Nodes drift gently; edges connect nearby nodes; both glow
+     brighter near the cursor. A traveling pulse implies data
+     flow along a random edge.
+     ========================================================= */
+  let nodes = [], edges = [];
+  function buildNetwork(){
+    nodes = new Array(CONFIG.networkNodeCount).fill(0).map(() => ({
+      baseX: networkRegion.x + Math.random() * networkRegion.w,
+      baseY: networkRegion.y + Math.random() * networkRegion.h,
+      x: 0, y: 0,
+      driftPhase: Math.random() * Math.PI * 2,
+      driftSpeed: Math.random() * 0.01 + 0.004,
+      driftAmp: Math.random() * 14 + 6,
+      red: Math.random() < 0.35
+    }));
+
+    // connect each node to its 2-3 nearest neighbours (computed once per layout)
+    edges = [];
+    for (let i = 0; i < nodes.length; i++){
+      const distances = [];
+      for (let j = 0; j < nodes.length; j++){
+        if (i === j) continue;
+        distances.push({ j, d: dist2(nodes[i].baseX, nodes[i].baseY, nodes[j].baseX, nodes[j].baseY) });
+      }
+      distances.sort((a, b) => a.d - b.d);
+      const linkCount = 2 + Math.floor(Math.random() * 2);
+      for (let k = 0; k < Math.min(linkCount, distances.length); k++){
+        const j = distances[k].j;
+        if (!edges.some(e => (e.a === i && e.b === j) || (e.a === j && e.b === i))){
+          edges.push({ a: i, b: j, pulse: Math.random() < 0.5 ? Math.random() : -1 });
+        }
+      }
+    }
+  }
+
+  function updateAndDrawNetwork(time){
+    // update drifting positions
+    for (const n of nodes){
+      n.x = n.baseX + Math.sin(time * n.driftSpeed + n.driftPhase) * n.driftAmp;
+      n.y = n.baseY + Math.cos(time * n.driftSpeed * 0.8 + n.driftPhase) * n.driftAmp * 0.6;
+    }
+
+    ctx.save();
+
+    // edges
+    for (const e of edges){
+      const a = nodes[e.a], b = nodes[e.b];
+      const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+      const dToMouse = mouseActive ? Math.sqrt(dist2(midX, midY, mouse.x, mouse.y)) : Infinity;
+      const near = dToMouse < CONFIG.mouseInfluenceRadius;
+      const glow = near ? (1 - dToMouse / CONFIG.mouseInfluenceRadius) : 0;
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineWidth = 1 + glow * 1.4;
+      ctx.strokeStyle = glow > 0.4
+        ? `rgba(230,57,70,${0.25 + glow * 0.55})`
+        : `rgba(56,189,248,${0.10 + glow * 0.35})`;
+      ctx.stroke();
+
+      // traveling pulse along the edge (implies data flow)
+      if (e.pulse >= 0){
+        e.pulse += 0.006;
+        if (e.pulse > 1) e.pulse = 0;
+        const px = a.x + (b.x - a.x) * e.pulse;
+        const py = a.y + (b.y - a.y) * e.pulse;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.8;
+        ctx.drawImage(nodeSpriteRed, px - 5, py - 5, 10, 10);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // nodes
+    ctx.globalCompositeOperation = "lighter";
+    for (const n of nodes){
+      const d2m = mouseActive ? dist2(n.x, n.y, mouse.x, mouse.y) : Infinity;
+      const influence = CONFIG.mouseInfluenceRadius ** 2;
+      const near = d2m < influence;
+      const glow = near ? (1 - d2m / influence) : 0;
+
+      // subtle attraction toward the cursor when very close
+      if (near && glow > 0.5){
+        const d = Math.sqrt(d2m) || 1;
+        n.x += (mouse.x - n.x) / d * glow * 0.6;
+        n.y += (mouse.y - n.y) / d * glow * 0.6;
+      }
+
+      const size = (n.red ? 14 : 12) + glow * 14;
+      const sprite = n.red ? nodeSpriteRed : nodeSprite;
+      ctx.globalAlpha = 0.55 + glow * 0.45;
+      ctx.drawImage(sprite, n.x - size/2, n.y - size/2, size, size);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* =========================================================
+     9. HUD — corner telemetry (throttled DOM writes)
+     ========================================================= */
+  const hudX = document.getElementById("hud-x");
+  const hudY = document.getElementById("hud-y");
+  const hudSignal = document.getElementById("hud-signal");
+  let hudFrame = 0;
+
+  function updateHUD(){
+    hudFrame++;
+    if (hudFrame % 6 !== 0) return; // update ~10x/sec instead of every frame
+    if (!mouseActive) return;
+    const nx = Math.min(999, Math.max(0, Math.round((mouse.x / W) * 999)));
+    const ny = Math.min(999, Math.max(0, Math.round((mouse.y / H) * 999)));
+    hudX.textContent = String(nx).padStart(3, "0");
+    hudY.textContent = String(ny).padStart(3, "0");
+    const signal = 92 + Math.round(8 * Math.abs(Math.sin(hudFrame * 0.01)));
+    hudSignal.textContent = signal + "%";
+  }
+
+  /* =========================================================
+     10. TYPING ANIMATION (console intro text)
+     A single text node is updated — no per-character DOM
+     element creation, so this stays cheap.
+     ========================================================= */
+  const typedCmd = document.getElementById("typed-cmd");
+  const typedLine = document.getElementById("typed-line");
+  const cmdText = "whoami";
+  const rotatingLines = [
+    "Manshaya Pradhan — Full Stack Developer",
+    "building backend systems...",
+    "training intelligent models...",
+    "debugging real-world problems...",
+    "learning new technologies...",
+    "shipping software..."
+  ];
+
+  function typeText(el, text, speed, done){
+    let i = 0;
+    (function step(){
+      if (i <= text.length){
+        el.textContent = text.slice(0, i);
+        i++;
+        setTimeout(step, speed);
+      } else if (done){
+        done();
+      }
+    })();
+  }
+
+  function runTypingSequence(){
+    typeText(typedCmd, cmdText, 90, () => {
+      let lineIndex = 0;
+      const cursor = document.createElement("span");
+      cursor.className = "cursor-blink";
+
+      function typeLine(){
+        const text = rotatingLines[lineIndex];
+        let i = 0;
+        typedLine.textContent = "";
+        typedLine.appendChild(cursor);
+        (function step(){
+          if (i <= text.length){
+            typedLine.textContent = text.slice(0, i);
+            typedLine.appendChild(cursor);
+            i++;
+            setTimeout(step, 38);
+          } else {
+            setTimeout(() => {
+              lineIndex = (lineIndex + 1) % rotatingLines.length;
+              typeLine();
+            }, 2200);
+          }
+        })();
+      }
+      typeLine();
+    });
+  }
+
+  /* =========================================================
+     11. ANIMATION LOOP
+     ========================================================= */
+  function frame(time){
+    updateMouse();
+    drawBackground(time);
+    updateAndDrawNetwork(time);
+    updateAndDrawFire(time);
+    updateAndDrawWater(time);
+    updateHUD();
+    requestAnimationFrame(frame);
+  }
+
+  /* =========================================================
+     12. INIT
+     ========================================================= */
+  window.addEventListener("resize", resize, { passive: true });
+  resize();       // also performs the first buildFire()/buildWater()/buildNetwork()
+  runTypingSequence();
+  requestAnimationFrame(frame);
+
+})();
+</script>
+
+</body>
+</html>
